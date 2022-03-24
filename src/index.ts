@@ -142,10 +142,10 @@ export default (api: IApi) => {
         template: '@routerConfig',
         output: (outputStr: string) => {
           if (outputStr !== lastRoutesOutput) {
+            // routes changed
             lastRoutesOutput = outputStr;
             const routesTree = sortDynamicRoutes(JSON.parse(outputStr));
             const tmpRes: Record<string, IRoute> = {};
-            // console.log(JSON.stringify(routesTree, null, 2))
             revMap(routesTree, (route, parent) => {
               let id = route.path;
               if (id === '/') id = '';
@@ -164,13 +164,6 @@ export default (api: IApi) => {
                 const layoutPath = join('plugin-convention-routes', tmpFilename);
                 const layoutFilePath = join(api.paths.absTmpPath, layoutPath);
                 layoutWritePath = layoutPath;
-                // api.writeTmpFile({
-                //   path: layoutPath,
-                //   content: `import { Outlet } from 'umi';
-                //   import Layout from '${route.path}';
-                //   return () => <Layout><Outlet /></Layout>;
-                //   `,
-                // })
                 file = layoutFilePath;
                 // add * to layout
                 tmpRes[id + '/*'] = {
@@ -224,7 +217,6 @@ export default (api: IApi) => {
   api.onBeforeCompiler(() => {
     Object.values(lastRoutesConfig).forEach((route) => {
       if (route.isLayout) {
-        // console.log(route);
         api.writeTmpFile({
           path: route.layoutWritePath,
           noPluginDir: true,
