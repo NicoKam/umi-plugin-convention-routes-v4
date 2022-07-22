@@ -1,10 +1,9 @@
-import { join } from 'path';
 import fs from 'fs';
+import { join } from 'path';
 import { scanRoutes } from 'routes-watcher';
 import { IApi, IRoute } from 'umi';
 
 type RevMapOptions<T> = {
-
   /** 子节点的 key */
   childKey?: string;
 
@@ -12,7 +11,6 @@ type RevMapOptions<T> = {
   childrenFirst?: boolean;
   parent?: T;
 };
-
 
 /**
  * 遍历树状结构
@@ -55,12 +53,10 @@ function revMap<T extends Object, R extends Object>(
   });
 }
 
-type RouteConfig =
-  | {
+type RouteConfig = {
   children: RouteConfig[];
   [key: string]: unknown;
-}
-  | IRoute;
+} & IRoute;
 
 function sortDynamicRoutes(arr: RouteConfig[] | undefined): IRoute[] {
   if (!arr) {
@@ -118,25 +114,28 @@ export default (api: IApi) => {
       fs.existsSync(join(api.paths.absPagesPath, '404.tsx')) ||
       fs.existsSync(join(api.paths.absPagesPath, '404.jsx'));
 
-    const { conventionRoutesConfig = {}} = api.config;
+    const { conventionRoutesConfig = {} } = api.config;
     const { successTips = 'Routes updated.', ...otherConventionRoutesConfig } = conventionRoutesConfig;
     const newRoutes = await new Promise<Record<string, IRoute>>((r) => {
       scanRoutes({
         pageRoot: api.paths.absPagesPath,
         childrenKey: 'routes',
-        filter: obj => obj.name === 'index' || obj.name === '_layout',
+        filter: (obj) => obj.name === 'index' || obj.name === '_layout',
         excludes: [/[\\/](components|models|services|layouts)[\\/]/],
-        modifyRoutePath: path => path.split('/').map((p) => {
-          if (/\[([^/^\[^\]]+)\]/.test(p)) {
-            let name = p.slice(1, p.length - 1);
-            if (p.endsWith('$]')) {
-              name = name.replace(/\$$/, '?');
-            }
-            return `:${name}`;
-          }
-          return p;
-        })
-          .join('/'),
+        modifyRoutePath: (path) =>
+          path
+            .split('/')
+            .map((p) => {
+              if (/\[([^/^\[^\]]+)\]/.test(p)) {
+                let name = p.slice(1, p.length - 1);
+                if (p.endsWith('$]')) {
+                  name = name.replace(/\$$/, '?');
+                }
+                return `:${name}`;
+              }
+              return p;
+            })
+            .join('/'),
         ...otherConventionRoutesConfig,
         successTips: '',
         template: '@routerConfig',
@@ -146,57 +145,62 @@ export default (api: IApi) => {
             lastRoutesOutput = outputStr;
             const routesTree = sortDynamicRoutes(JSON.parse(outputStr));
             const tmpRes: Record<string, IRoute> = {};
-            revMap(routesTree, (route, parent) => {
-              let id = route.path;
-              if (id === '/') id = '';
-              if (route.exact) id += '/index';
-              // else id += '/_layout';
-              if (id.startsWith('/')) id = id.slice(1);
-              let path = route.path === '/' ? route.path : route.path.slice(1);
-              if (parent?.id) {
-                path = path.replace(`${parent.id}/`, '');
-              }
-              let file = route.component.replace('@/pages/', '');
-              let layoutWritePath = '';
-              // isLayout
-              if (!route.exact) {
-                const tmpFilename = `_layout_${id.replace(/[/:]/g, '__')}.tsx`;
-                const layoutPath = join('plugin-convention-routes', tmpFilename);
-                const layoutFilePath = join(api.paths.absTmpPath, layoutPath);
-                layoutWritePath = layoutPath;
-                file = layoutFilePath;
-                // add * to layout
-                tmpRes[`${id}/*`] = {
-                  id: `${id}/*`,
-                  path: '*',
-                  parentId: id,
-                  file: has404 ? '404' : undefined,
+            revMap(
+              routesTree,
+              (route, parent) => {
+                let id = route.path;
+                if (id === '/') id = '';
+                if (route.exact) id += '/index';
+                // else id += '/_layout';
+                if (id.startsWith('/')) id = id.slice(1);
+                let path = route.path === '/' ? route.path : route.path.slice(1);
+                if (parent?.id) {
+                  path = path.replace(`${parent.id}/`, '');
+                }
+                let file = route.component.replace('@/pages/', '');
+                let layoutWritePath = '';
+                // isLayout
+                if (!route.exact) {
+                  const tmpFilename = `_layout_${id.replace(/[/:]/g, '__')}.tsx`;
+                  const layoutPath = join('plugin-convention-routes', tmpFilename);
+                  const layoutFilePath = join(api.paths.absTmpPath, layoutPath);
+                  layoutWritePath = layoutPath;
+                  file = layoutFilePath;
+                  // add * to layout
+                  tmpRes[`${id}/*`] = {
+                    id: `${id}/*`,
+                    path: '*',
+                    parentId: id,
+                    file: has404 ? '404' : '',
+                    absPath: layoutFilePath,
+                  };
+                }
+
+                const isIndex = parent && id === `${parent.id}/index`;
+                tmpRes[id] = {
+                  id,
+                  path: isIndex ? '' : path,
+                  file,
+                  index: !!isIndex,
+                  isLayout: !route.exact,
+                  filePath: route.component,
+                  layoutWritePath,
+                  absPath: layoutWritePath,
                 };
-              }
+                if (parent) {
+                  tmpRes[id].parentId = parent.id;
+                } else if (originRoutes['@@/global-layout']) {
+                  tmpRes[id].parentId = '@@/global-layout';
+                }
 
-              const isIndex = parent && id === `${parent.id}/index`;
-              tmpRes[id] = {
-                id,
-                path: isIndex ? undefined : path,
-                file,
-                index: !!isIndex,
-                isLayout: !route.exact,
-                filePath: route.component,
-                layoutWritePath,
-              };
-              if (parent) {
-                tmpRes[id].parentId = parent.id;
-              } else if (originRoutes['@@/global-layout']) {
-                tmpRes[id].parentId = '@@/global-layout';
-              }
-
-
-              return {
-                id,
-                path,
-                file,
-              };
-            }, { childKey: 'routes' });
+                return {
+                  id,
+                  path,
+                  file,
+                };
+              },
+              { childKey: 'routes' },
+            );
             lastRoutesConfig = tmpRes;
             api.logger.info(successTips);
           }
@@ -211,7 +215,6 @@ export default (api: IApi) => {
     }
     return newRoutes;
   });
-
 
   api.onBeforeCompiler(() => {
     Object.values(lastRoutesConfig).forEach((route) => {
