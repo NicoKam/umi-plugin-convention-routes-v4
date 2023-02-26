@@ -107,6 +107,7 @@ export default (api: IApi) => {
 
   let lastRoutesOutput = '';
   let lastRoutesConfig: Record<string, IRoute> = {};
+  let shouldGenrateRoutesLayout = false;
 
   api.modifyRoutes(async (originRoutes) => {
     const has404 =
@@ -141,6 +142,7 @@ export default (api: IApi) => {
         template: '@routerConfig',
         output: (outputStr: string) => {
           if (outputStr !== lastRoutesOutput) {
+            shouldGenrateRoutesLayout = true;
             // routes changed
             lastRoutesOutput = outputStr;
             const routesTree = sortDynamicRoutes(JSON.parse(outputStr));
@@ -213,21 +215,29 @@ export default (api: IApi) => {
     if (originRoutes['@@/global-layout']) {
       newRoutes['@@/global-layout'] = originRoutes['@@/global-layout'];
     }
+
     return newRoutes;
   });
 
-  api.onBeforeCompiler(() => {
-    Object.values(lastRoutesConfig).forEach((route) => {
-      if (route.isLayout && route.layoutWritePath) {
-        api.writeTmpFile({
-          path: route.layoutWritePath,
-          noPluginDir: true,
-          content: `import { Outlet } from 'umi';
-                  import Layout from '${route.filePath}';
-                  export default () => <Layout><Outlet /></Layout>;
-                  `,
-        });
-      }
-    });
+  api.onGenerateFiles(() => {
+    if (shouldGenrateRoutesLayout) {
+      api.logger.info('Generating tmp layout files.');
+      shouldGenrateRoutesLayout = false;
+      Object.values(lastRoutesConfig).forEach((route) => {
+        if (route.isLayout && route.layoutWritePath) {
+          api.writeTmpFile({
+            path: route.layoutWritePath,
+            noPluginDir: true,
+            content: `import { Outlet } from 'umi';
+                    import Layout from '${route.filePath}';
+                    export default () => <Layout><Outlet /></Layout>;
+                    `,
+          });
+        }
+      });
+    }
   });
+  // api.onBeforeCompiler(() => {
+
+  // });
 };
